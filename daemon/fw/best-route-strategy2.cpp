@@ -26,6 +26,7 @@
 #include "best-route-strategy2.hpp"
 #include "algorithm.hpp"
 #include "core/logger.hpp"
+#include <climits> 
 
 namespace nfd {
 namespace fw {
@@ -35,6 +36,8 @@ NFD_REGISTER_STRATEGY(BestRouteStrategy2);
 
 const time::milliseconds BestRouteStrategy2::RETX_SUPPRESSION_INITIAL(10);
 const time::milliseconds BestRouteStrategy2::RETX_SUPPRESSION_MAX(250);
+
+std::map <int, size_t> face_size;
 
 BestRouteStrategy2::BestRouteStrategy2(Forwarder& forwarder, const Name& name)
   : Strategy(forwarder)
@@ -105,6 +108,7 @@ findEligibleNextHopWithEarliestOutRecord(const Face& inFace, const Interest& int
                                          const fib::NextHopList& nexthops,
                                          const shared_ptr<pit::Entry>& pitEntry)
 {
+  size_t current_size = LLONG_MAX;
   fib::NextHopList::const_iterator found = nexthops.end();
   time::steady_clock::TimePoint earliestRenewed = time::steady_clock::TimePoint::max();
   for (fib::NextHopList::const_iterator it = nexthops.begin(); it != nexthops.end(); ++it) {
@@ -112,7 +116,8 @@ findEligibleNextHopWithEarliestOutRecord(const Face& inFace, const Interest& int
       continue;
     pit::OutRecordCollection::iterator outRecord = pitEntry->getOutRecord(it->getFace());
     BOOST_ASSERT(outRecord != pitEntry->out_end());
-    if (outRecord->getLastRenewed() < earliestRenewed) {
+    if (current_size > face_size[inFace.getId()]) {
+      current_size = face_size[inFace.getId()];
       found = it;
       earliestRenewed = outRecord->getLastRenewed();
     }
@@ -125,6 +130,7 @@ BestRouteStrategy2::afterReceiveInterest(const Face& inFace, const Interest& int
                                          const shared_ptr<pit::Entry>& pitEntry)
 {
   printf("size of interest packet %ld \n", interest.size());
+ // face_size.insert ( std::pair<int,size_t>(out_face,interest.size()) );
   RetxSuppressionResult suppression = m_retxSuppression.decidePerPitEntry(*pitEntry);
   if (suppression == RetxSuppressionResult::SUPPRESS) {
     NFD_LOG_DEBUG(interest << " from=" << inFace.getId()
@@ -155,6 +161,9 @@ BestRouteStrategy2::afterReceiveInterest(const Face& inFace, const Interest& int
     }
 
     Face& outFace = it->getFace();
+    //face_size.insert ( std::pair<int,size_t>(outFace.getId(),interest.size()) );
+    face_size[outFace.getId()] += interest.size();
+    //intrest_size[interest] = interest.size();
     this->sendInterest(pitEntry, outFace, interest);
     NFD_LOG_DEBUG(interest << " from=" << inFace.getId()
                            << " newPitEntry-to=" << outFace.getId());
@@ -168,6 +177,9 @@ BestRouteStrategy2::afterReceiveInterest(const Face& inFace, const Interest& int
   printf("find an unused upstream with lowest cost except downstream\n");
   if (it != nexthops.end()) {
     Face& outFace = it->getFace();
+    //face_size.insert ( std::pair<int,size_t>(out_face,interest.size()) );
+    face_size[outFace.getId()] += interest.size();
+    //face_size.insert ( std::pair<int,size_t>(outFace.getId(),interest.size()) );
     this->sendInterest(pitEntry, outFace, interest);
     NFD_LOG_DEBUG(interest << " from=" << inFace.getId()
                            << " retransmit-unused-to=" << outFace.getId());
@@ -182,12 +194,21 @@ BestRouteStrategy2::afterReceiveInterest(const Face& inFace, const Interest& int
   else {
     printf("findEligibleNextHopWithEarliestOutRecord\n");
     Face& outFace = it->getFace();
+    //face_size.insert ( std::pair<int,size_t>(out_face,interest.size()) );
+    face_size[outFace.getId()] += interest.size();
     this->sendInterest(pitEntry, outFace, interest);
     NFD_LOG_DEBUG(interest << " from=" << inFace.getId()
                            << " retransmit-retry-to=" << outFace.getId());
   }
+  
 }
 
+void
+BestRouteStrategy2::beforeSatisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
+                                   const Face& inFace, const Data& data)
+{
+   face_size[inFace.getId()]  -= (*pitEntry).getInterest().size();
+}
 void
 BestRouteStrategy2::afterReceiveNack(const Face& inFace, const lp::Nack& nack,
                                      const shared_ptr<pit::Entry>& pitEntry)
