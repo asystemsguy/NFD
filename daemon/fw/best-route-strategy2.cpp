@@ -124,6 +124,7 @@ void
 BestRouteStrategy2::afterReceiveInterest(const Face& inFace, const Interest& interest,
                                          const shared_ptr<pit::Entry>& pitEntry)
 {
+  printf("size of interest packet %ld \n", interest.size());
   RetxSuppressionResult suppression = m_retxSuppression.decidePerPitEntry(*pitEntry);
   if (suppression == RetxSuppressionResult::SUPPRESS) {
     NFD_LOG_DEBUG(interest << " from=" << inFace.getId()
@@ -137,7 +138,8 @@ BestRouteStrategy2::afterReceiveInterest(const Face& inFace, const Interest& int
 
   if (suppression == RetxSuppressionResult::NEW) {
     // forward to nexthop with lowest cost except downstream
-    it = std::find_if(nexthops.begin(), nexthops.end(),
+   printf("suppression == RetxSuppressionResult::NEW\n"); 
+   it = std::find_if(nexthops.begin(), nexthops.end(),
       bind(&isNextHopEligible, cref(inFace), interest, _1, pitEntry,
            false, time::steady_clock::TimePoint::min()));
 
@@ -163,6 +165,7 @@ BestRouteStrategy2::afterReceiveInterest(const Face& inFace, const Interest& int
   it = std::find_if(nexthops.begin(), nexthops.end(),
                     bind(&isNextHopEligible, cref(inFace), interest, _1, pitEntry,
                          true, time::steady_clock::now()));
+  printf("find an unused upstream with lowest cost except downstream\n");
   if (it != nexthops.end()) {
     Face& outFace = it->getFace();
     this->sendInterest(pitEntry, outFace, interest);
@@ -177,6 +180,7 @@ BestRouteStrategy2::afterReceiveInterest(const Face& inFace, const Interest& int
     NFD_LOG_DEBUG(interest << " from=" << inFace.getId() << " retransmitNoNextHop");
   }
   else {
+    printf("findEligibleNextHopWithEarliestOutRecord\n");
     Face& outFace = it->getFace();
     this->sendInterest(pitEntry, outFace, interest);
     NFD_LOG_DEBUG(interest << " from=" << inFace.getId()
