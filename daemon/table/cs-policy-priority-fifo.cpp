@@ -99,6 +99,8 @@ PriorityFifoPolicy::evictOne()
     i = m_queues[QUEUE_FIFO].front();
   }
 
+  PTManager::getInstance()->publist_remove((*i).getName().toUri());
+
   this->detachQueue(i);
   this->emitSignal(beforeEvict, i);
 }

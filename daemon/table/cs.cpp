@@ -46,6 +46,7 @@ makeDefaultPolicy()
 Cs::Cs(size_t nMaxPackets)
 {
   this->setPolicyImpl(makeDefaultPolicy());
+  ptm = PTManager::getInstance();
   m_policy->setLimit(nMaxPackets);
 }
 
@@ -123,6 +124,87 @@ Cs::find(const Interest& interest,
   bool isRightmost = interest.getChildSelector() == 1;
   NFD_LOG_DEBUG("find " << prefix << (isRightmost ? " R" : " L"));
 
+
+// NEW CHANGE
+  // ignore reserved localhost command.
+  if(!Name("/localhost").isPrefixOf(prefix)){
+    //ptm->print_publist();
+  // check if it is a private request.
+    if(ptm->amIPrivate()){
+
+      if(!ptm->isPublic(prefix)){
+        //std::cout << "I'm private request, and my name is not in PubList" << std::endl;
+        std::string myNonce = ptm->getMyNonce();
+        //std::cout<<"I'm private request, my nonce is "<< myNonce << std::endl;
+
+        // If it's a private request, check if there are peer pentry with the same name in the ptable.
+        // if there is any peer pentries, this request should be delayed for once.
+        // since if it doesn't, the privacy of peer is leaked.
+        if (ptm->peer_check(prefix, myNonce)) {
+          //std::cout <<"I found myself is in ptable with peer" << std::endl;
+
+          // Then check if i have been delayed once for any peers.
+          // if yes, that means this time the request does not have to delay anymore.
+          // since the previous request could be cached by at least once.
+          if (ptm->hasDelayed(prefix, myNonce)) {
+            //std::cout <<"but i have delayed for others, proceed as normal" << std::endl;
+          } 
+
+          // If not, then this request would have to delay once to protect the privacy of peers.
+          else {
+            //std::cout <<"but i'm first time here, delay once" << std::endl;
+            //ptm->resetLastPair();
+            ptm->setDelayed(prefix, myNonce, true);
+            ptm->dequeue_pair();
+            missCallback(interest);
+            return;
+          }
+        } 
+
+        // If there is no peer pentries with the given name.
+        // this request becomes the first one, and does not have to consider for others.
+        else {
+          //std::cout <<"I found myself is peerless in ptable, proceed as normal" << std::endl;
+          ptm->setDelayed(prefix, myNonce, true);
+        }
+
+      } else {
+        //std::cout << "I'm private request, but my name is in PubList, proceed as normal" << std::endl;
+      }
+    } 
+
+    // if it's not a private request, then any pentries in ptable should be invalidated.
+    // The invalidation marks this name as being publicly accessed, so no delay is require anymore.
+    else {
+      //std::cout<<interest.getName()<<" is not private" << std::endl;
+      if (ptm->isNamePrivate(prefix)){
+        //std::cout<<"There are private entry of my name in ptable, delay once, invalidate all" << std::endl;
+        ptm->invalidate_all(prefix);
+        //ptm->print_table();
+        //ptm->resetLastPair();
+        ptm->dequeue_pair();
+        missCallback(interest);
+        return;
+      } else {
+        //std::cout<<"There is no private entry of my name in ptable, proceed as normal" << std::endl;
+      }
+
+      // insert the public request into Publist is not there
+      if(!ptm->isPublic(prefix)){
+        //std::cout << "My name is not in PubList, add myself to it" << std::endl;
+        ptm->publist_insert(prefix.toUri());
+      }
+      else{
+        //std::cout << "My name is in PubList, update timer and proceed" << std::endl;
+      }
+    }
+
+    //ptm->resetLastPair();
+    ptm->dequeue_pair();
+
+  }
+  // CHANGE NEW
+  
   iterator first = m_table.lower_bound(prefix);
   iterator last = m_table.end();
   if (prefix.size() > 0) {

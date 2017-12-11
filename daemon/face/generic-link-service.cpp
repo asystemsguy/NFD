@@ -268,6 +268,40 @@ GenericLinkService::decodeInterest(const Block& netPkt, const lp::Packet& firstP
   // forwarding expects Interest to be created with make_shared
   auto interest = make_shared<Interest>(netPkt);
 
+  if(!Name("/localhost").isPrefixOf(interest->getName().toUri())){
+
+    // NEW_CHANGE
+    bool isPrivate = false;
+    std::string nonce = "";
+    std::string iname = interest->getName().toUri();
+    std::string actual_name = "";
+    int pos = iname.find("%24"); // find the $ sign in name.
+
+    // check if the interest has a private name in format. ex. /hello/world$private+123
+    if(pos != -1){
+      std::string lastpart = iname.substr(pos+3); 
+
+      // if it's private, get nonce from it.
+      if (lastpart.substr(0,7) == "private"){
+        isPrivate = true;
+        nonce = lastpart.substr(lastpart.find("+")+1);
+        actual_name = iname.substr(0,pos);
+      }
+    }
+    if (isPrivate) {
+      interest->setName(actual_name);
+
+      // insert a new pentry into ptable is there isn't one in it.
+      // otherwise, nothing happens.
+      PTManager::getInstance()->insert_pentry(interest->getName(),nonce);
+      PTManager::getInstance()->enqueue_pair(true, nonce);
+      //PTManager::getInstance()->setLastPair(true, nonce);
+    } else {
+      PTManager::getInstance()->enqueue_pair(false, "");
+    }
+  }
+  // CHANGE_NEW
+  
   if (firstPkt.has<lp::NextHopFaceIdField>()) {
     if (m_options.allowLocalFields) {
       interest->setTag(make_shared<lp::NextHopFaceIdTag>(firstPkt.get<lp::NextHopFaceIdField>()));

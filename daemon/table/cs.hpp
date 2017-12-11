@@ -51,6 +51,7 @@
 #include "cs-policy.hpp"
 #include "cs-internal.hpp"
 #include "cs-entry-impl.hpp"
+#include "ptable_manager.hpp"
 #include <ndn-cxx/util/signal.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 
@@ -180,6 +181,7 @@ private: // find
 private:
   Table m_table;
   unique_ptr<Policy> m_policy;
+  PTManager *ptm;
   ndn::util::signal::ScopedConnection m_beforeEvictConnection;
 };
 

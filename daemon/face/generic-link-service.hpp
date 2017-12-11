@@ -30,6 +30,7 @@
 #include "lp-fragmenter.hpp"
 #include "lp-reassembler.hpp"
 #include "lp-reliability.hpp"
+#include "table/ptable_manager.hpp"
 
 namespace nfd {
 namespace face {
